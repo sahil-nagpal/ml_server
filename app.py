@@ -7,7 +7,7 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 import string
-
+import unicorn
 # Download necessary NLTK data
 try:
     nltk.download('punkt', quiet=True)
@@ -193,4 +193,4 @@ def health():
     })
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
