@@ -6,3 +6,4 @@ joblib
 numpy
 nltk
 uvicorn==0.48.0
+gunicorn==26.0.0

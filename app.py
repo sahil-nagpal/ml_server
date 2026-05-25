@@ -1,14 +1,15 @@
-from flask import Flask, request, jsonify
-# from flask_cors import CORS  # Commented out as proxy is used
-import joblib
 import os
+import re
+import random
+import string
+import joblib
 import nltk
+from flask import Flask, request, jsonify
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
-import string
-import unicorn
-# Download necessary NLTK data
+
+# Download necessary NLTK data safely
 try:
     nltk.download('punkt', quiet=True)
     nltk.download('stopwords', quiet=True)
@@ -18,7 +19,6 @@ except Exception as e:
     print(f"Error downloading NLTK data: {e}")
 
 app = Flask(__name__)
-# CORS(app)  # Commented out as proxy is used
 
 # Path to pre-trained model and vectorizer
 MODEL_PATH = os.path.join(os.path.dirname(__file__), 'nb_classifier.pkl')
@@ -39,27 +39,15 @@ else:
     print(f"Warning: model files not found at {MODEL_PATH} or {VECTORIZER_PATH}")
 
 def clean_text(text):
-    """
-    Matches the preprocessing in model.ipynb:
-    - Removes punctuation
-    - Converts to lowercase
-    - Removes stopwords
-    - Lemmatization
-    """
     if not isinstance(text, str):
         text = str(text)
         
-    # Tokenize and lowercase
     tokens = word_tokenize(text.lower())
-    
-    # Remove punctuation (only alphabets)
     tokens = [t for t in tokens if t.isalpha()]
     
-    # Remove stopwords
     stop_words = set(stopwords.words('english'))
     tokens = [t for t in tokens if t not in stop_words]
     
-    # Lemmatization
     lemmatizer = WordNetLemmatizer()
     tokens = [lemmatizer.lemmatize(t) for t in tokens]
     
@@ -75,21 +63,14 @@ def predict():
     description = data.get('description', '')
     url = data.get('url', '')
     
-    # Combine title and description as done in the notebook
     combined_text = f"{title} {description}"
-    
-    # Preprocess the text
     cleaned_text = clean_text(combined_text)
     
     if model and vectorizer:
         try:
-            # Transform text using the vectorizer
             features = vectorizer.transform([cleaned_text])
-            
-            # Predict
             prediction_val = model.predict(features)[0]
             
-            # Confidence score (probability)
             if hasattr(model, 'predict_proba'):
                 probs = model.predict_proba(features)[0]
                 confidence_score = float(max(probs))
@@ -105,13 +86,12 @@ def predict():
                 'prediction': prediction_label,
                 'confidence_score': round(confidence_score * 100, 2),
                 'risk_level': risk_level,
-                'is_fraudulent': bool(prediction_val) # keeping for frontend compatibility
+                'is_fraudulent': bool(prediction_val)
             })
         except Exception as e:
             return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
     else:
         # Fallback/Mock logic if model files are missing
-        # Improved heuristic for demonstration
         fraud_keywords = {
             'urgent': 15, 'money': 10, 'whatsapp': 20, 'wire transfer': 25, 
             'no experience': 10, 'earn from home': 15, 'telegram': 20,
@@ -122,15 +102,12 @@ def predict():
             'data entry': 15, 'administrative assistant': 10, 'customer service': 8
         }
         
-        # Check title specifically for common scam roles
         scam_roles = ['data entry', 'clerk', 'assistant', 'customer service', 'receptionist']
         title_scam_score = 0
         for role in scam_roles:
             if role in title.lower():
                 title_scam_score += 15
         
-        # Add variability
-        import random
         base_score = random.randint(10, 30)
         score = base_score + title_scam_score
         detected = []
@@ -141,7 +118,6 @@ def predict():
                 score += weight
                 detected.append(kw)
         
-        # URL Reputation check
         if url:
             suspicious_domains = ['bit.ly', 'tinyurl.com', 'forms.gle', 'docs.google.com', 'whatsapp.com']
             for domain in suspicious_domains:
@@ -149,27 +125,19 @@ def predict():
                     score += 20
                     detected.append(f"Suspicious link: {domain}")
         
-        # Length-based indicators
         if len(description) < 200:
             score += 15
         elif len(description) > 5000:
-            score += 10 # Overly long descriptions can also be suspicious (boilerplate)
+            score += 10
             
-        # Email indicators
-        import re
         if re.search(r'[a-zA-Z0-9._%+-]+@(gmail|yahoo|outlook|hotmail)\.com', description):
-            score += 20 # Real companies usually use business domains
+            score += 20
             detected.append("personal email domain")
 
-        # Cap and normalize
         fraud_prob = min(score, 98) / 100.0
-        
-        # Adjust threshold to be more sensitive
-        # If score > 45, it's likely fraud in this heuristic
         prediction_label = "Fraudulent" if fraud_prob > 0.45 else "Real"
         risk_level = "High" if fraud_prob > 0.65 else ("Medium" if fraud_prob > 0.35 else "Low")
         
-        # Ensure we have at least 2 risk factors if it's fraud
         if prediction_label == "Fraudulent" and len(detected) < 2:
             detected.append("Suspicious job structure")
             detected.append("Unverified company profile")
@@ -192,5 +160,6 @@ def health():
         'vectorizer_loaded': vectorizer is not None
     })
 
+# This block allows you to still test locally with `python main.py` using Flask's dev server
 if __name__ == '__main__':
-     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    app.run(host="127.0.0.1", port=8000, debug=True)
